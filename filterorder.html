@@ -6,7 +6,7 @@
   <title>Tableau Filter Order</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: white; min-height: 100vh; padding: 20px; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: white; min-height: 100vh; padding: 20px; transition: background 0.4s ease; }
     .container { width: 100%; max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; }
     .landing-page { background: white; border-radius: 20px; padding: 40px 40px 60px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.1); animation: slideIn 0.6s ease-out; border: none; width: 100%; }
     @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -28,10 +28,15 @@
     .stats { display: flex; justify-content: center; gap: 30px; margin-top: 10px; font-size: 16px; color: #666; }
     .order-wrapper { display: grid; gap: 16px; width: 100%; }
     .cards { background: #f8f9fa; padding: 20px; border-radius: 15px; border: 2px solid #e0e0e0; display: grid; gap: 10px; }
-    .card { background: white; border: 2px solid #ddd; border-radius: 10px; padding: 14px; font-weight: 700; color: #00A1E0; cursor: grab; transition: all 0.2s ease; }
+    .card { background: white; border: 2px solid #ddd; border-radius: 10px; padding: 14px; font-weight: 700; color: #00A1E0; cursor: grab; transition: all 0.2s ease; user-select: none; }
     .card:hover { border-color: #00A1E0; box-shadow: 0 8px 18px rgba(0,161,224,0.2); transform: translateY(-2px); }
     .card.dragging { opacity: 0.6; }
     .drop-target { border: 2px dashed #00A1E0; border-radius: 10px; padding: 12px; background: #e8f4fb; }
+    .card.correct { border-color: #28a745; background: #ecf9f0; position: relative; box-shadow: 0 6px 12px rgba(40,167,69,0.18); }
+    .card.correct::after { content: '✓ Correct spot'; color: #1e7e34; font-size: 12px; font-weight: 600; position: absolute; right: 10px; bottom: 8px; }
+    .card.correct-flash { animation: pulse 0.7s ease-in-out; }
+    .card.locked { cursor: default; pointer-events: none; }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
     .card.color-1 { color: #00A1E0; }
     .card.color-2 { color: #28a745; }
     .card.color-3 { color: #ff9800; }
@@ -85,6 +90,7 @@
         <div class="cards" id="cardList"></div>
         <div class="message" id="message"></div>
         <div class="game-controls">
+          <button class="btn-link" onclick="checkProgress()">Check progress</button>
           <button class="game-btn btn-home" onclick="goHome()">Back to Home</button>
           <a id="csvLink" class="btn-link" download="filter-winners.csv" style="display:none;">Export winners CSV</a>
           <button id="resetWinnersBtn" class="btn-link" style="display:none;" onclick="resetWinners()">Reset winners</button>
@@ -132,49 +138,90 @@
     let playedNames = new Set();
     let startTime = 0;
     let timerInterval = null;
+    let finishedTime = null;
+    let gameCompleted = false;
 
     function shuffle(arr) {
       return [...arr].sort(() => Math.random() - 0.5);
     }
 
+    function shuffleOrderAvoidingCorrect() {
+      let attempt = 0;
+      const maxAttempts = 50;
+      while (attempt < maxAttempts) {
+        const candidate = shuffle(CORRECT_ORDER);
+        const hasFixedPoints = candidate.some((item, i) => item === CORRECT_ORDER[i]);
+        if (!hasFixedPoints) return candidate;
+        attempt++;
+      }
+      return shuffle(CORRECT_ORDER);
+    }
+
     function buildCards() {
-      currentOrder = shuffle(CORRECT_ORDER);
+      currentOrder = shuffleOrderAvoidingCorrect();
       renderCards();
       document.getElementById('message').textContent = '';
       resetTimer();
+      gameCompleted = false;
     }
 
-    function renderCards() {
+    function renderCards(options = {}) {
+      const { flashIndex = null } = options;
       const list = document.getElementById('cardList');
       list.innerHTML = '';
       currentOrder.forEach((text, idx) => {
         const card = document.createElement('div');
         card.className = `card color-${(idx % 7) + 1}`;
         card.textContent = text;
-        card.draggable = true;
+        const isCorrectSpot = text === CORRECT_ORDER[idx];
+        const isLocked = gameCompleted || isCorrectSpot;
+        card.draggable = !isLocked;
         card.dataset.index = idx;
         card.addEventListener('dragstart', onDragStart);
         card.addEventListener('dragover', onDragOver);
         card.addEventListener('drop', onDrop);
         card.addEventListener('dragend', onDragEnd);
+        card.addEventListener('dragenter', onDragEnter);
+        card.addEventListener('dragleave', onDragLeave);
+        if (isCorrectSpot) card.classList.add('correct');
+        if (isCorrectSpot && flashIndex === idx) card.classList.add('correct-flash');
+        if (isLocked) card.classList.add('locked');
         list.appendChild(card);
       });
     }
 
     let dragIndex = null;
     function onDragStart(e) {
+      if (gameCompleted || e.target.classList.contains('locked')) return;
       dragIndex = Number(e.target.dataset.index);
       e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.dropEffect = 'move';
+      e.dataTransfer.setData('text/plain', e.target.textContent);
       e.target.classList.add('dragging');
     }
 
     function onDragOver(e) {
+      if (gameCompleted || e.currentTarget.classList.contains('locked')) return;
       e.preventDefault();
       const target = e.currentTarget;
+      clearDropTargets();
       target.classList.add('drop-target');
     }
 
+    function onDragEnter(e) {
+      if (gameCompleted || e.currentTarget.classList.contains('locked')) return;
+      e.preventDefault();
+      clearDropTargets();
+      e.currentTarget.classList.add('drop-target');
+    }
+
+    function onDragLeave(e) {
+      if (gameCompleted || e.currentTarget.classList.contains('locked')) return;
+      e.currentTarget.classList.remove('drop-target');
+    }
+
     function onDrop(e) {
+      if (gameCompleted || e.currentTarget.classList.contains('locked')) return;
       e.preventDefault();
       const targetIndex = Number(e.currentTarget.dataset.index);
       if (dragIndex === null || targetIndex === dragIndex) return;
@@ -182,8 +229,8 @@
       currentOrder.splice(targetIndex, 0, item);
       dragIndex = null;
       cleanDropStyles();
-      renderCards();
-      checkOrder();
+      renderCards({ flashIndex: targetIndex });
+      checkOrder(item, targetIndex);
     }
 
     function onDragEnd() {
@@ -191,18 +238,52 @@
       cleanDropStyles();
     }
 
-    function cleanDropStyles() {
-      document.querySelectorAll('.card').forEach(c => c.classList.remove('dragging', 'drop-target'));
+    function clearDropTargets() {
+      document.querySelectorAll('.card.drop-target').forEach(c => c.classList.remove('drop-target'));
     }
 
-    function checkOrder() {
+    function cleanDropStyles() {
+      clearDropTargets();
+      document.querySelectorAll('.card').forEach(c => c.classList.remove('dragging'));
+    }
+
+    function checkOrder(lastMovedItem = null, targetIndex = null) {
+      const correctCount = currentOrder.reduce((count, item, i) => count + (item === CORRECT_ORDER[i] ? 1 : 0), 0);
       const isCorrect = currentOrder.every((item, i) => item === CORRECT_ORDER[i]);
       if (isCorrect) {
-        document.getElementById('message').textContent = '✓ Correct order!';
-        setTimeout(showWinScreen, 300);
+        gameCompleted = true;
+        if (finishedTime === null) finishedTime = Date.now();
+        updateTimer();
+        stopTimer();
+        document.getElementById('message').textContent = '✓ Correct order! Reviewing...';
+        lockCards();
+        setTimeout(showWinScreen, 10000);
       } else {
-        document.getElementById('message').textContent = 'Keep adjusting the order.';
+        const placedCorrectly = lastMovedItem && targetIndex !== null && currentOrder[targetIndex] === CORRECT_ORDER[targetIndex];
+        if (placedCorrectly) {
+          document.getElementById('message').textContent = `"${lastMovedItem}" is in the right spot! (${correctCount}/${CORRECT_ORDER.length})`;
+        } else {
+          document.getElementById('message').textContent = `Keep adjusting the order. (${correctCount}/${CORRECT_ORDER.length})`;
+        }
       }
+    }
+
+    function checkProgress() {
+      const correctCount = currentOrder.reduce((count, item, i) => count + (item === CORRECT_ORDER[i] ? 1 : 0), 0);
+      renderCards();
+      const messageEl = document.getElementById('message');
+      if (correctCount === 0) {
+        messageEl.textContent = 'No filters are in the right spot yet. Keep going!';
+      } else {
+        messageEl.textContent = `${correctCount}/${CORRECT_ORDER.length} filters are currently in the correct position.`;
+      }
+    }
+
+    function lockCards() {
+      document.querySelectorAll('.card').forEach(card => {
+        card.draggable = false;
+        card.classList.add('locked');
+      });
     }
 
     function showWinScreen() {
@@ -244,12 +325,8 @@
       if (!nameVal) return;
       const normalized = nameVal.toLowerCase();
       const isAdmin = normalized === ADMIN_USER.toLowerCase();
-      if (!isAdmin && playedNames.has(normalized)) {
-        alert('This user already played. Please use a different name.');
-        return;
-      }
       playerName = nameVal;
-      if (!isAdmin) {
+      if (!isAdmin && !playedNames.has(normalized)) {
         playedNames.add(normalized);
         savePlayedNames();
       }
@@ -260,6 +337,9 @@
 
     function recordWinner() {
       if (!playerName) return;
+      const normalized = playerName.toLowerCase();
+      const alreadyRecorded = winners.some(w => (w.name || '').toLowerCase() === normalized);
+      if (alreadyRecorded) return;
       const timestamp = new Date().toISOString();
       winners.push({ name: playerName, time: formatTimeElapsed(), timestamp });
       saveWinners();
@@ -323,6 +403,7 @@
     function startTimer() {
       stopTimer();
       startTime = Date.now();
+      finishedTime = null;
       timerInterval = setInterval(updateTimer, 1000);
       updateTimer();
     }
@@ -334,6 +415,7 @@
 
     function resetTimer() {
       startTime = 0;
+      finishedTime = null;
       document.getElementById('timer').textContent = '00:00';
     }
 
@@ -341,9 +423,14 @@
       document.getElementById('timer').textContent = formatTimeElapsed();
     }
 
+    function getElapsedSeconds() {
+      if (!startTime) return 0;
+      const endPoint = finishedTime || Date.now();
+      return Math.floor((endPoint - startTime) / 1000);
+    }
+
     function formatTimeElapsed() {
-      if (!startTime) return '00:00';
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const elapsed = getElapsedSeconds();
       const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
       const seconds = String(elapsed % 60).padStart(2, '0');
       return `${minutes}:${seconds}`;
