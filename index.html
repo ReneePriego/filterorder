@@ -92,8 +92,7 @@
         <div class="game-controls">
           <button class="btn-link" onclick="checkProgress()">Check progress</button>
           <button class="game-btn btn-home" onclick="goHome()">Back to Home</button>
-          <a id="csvLink" class="btn-link" download="filter-winners.csv" style="display:none;">Export winners CSV</a>
-          <button id="resetWinnersBtn" class="btn-link" style="display:none;" onclick="resetWinners()">Reset winners</button>
+          <a id="sheetLink" class="btn-link" href="#" target="_blank" style="display:none;">Open results sheet</a>
         </div>
       </div>
     </div>
@@ -121,7 +120,10 @@
   </div>
 
   <script>
+    const SUBMIT_URL = 'https://script.google.com/macros/s/AKfycbw-H1cvOUc9Y38wVLV1qvFhirDIJx7Z0m2hN74yUskd2cZ0t9WfqIe5XGGbf7SHAlAO/exec';
+    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kT-gdl_87rzIgdOHpNeSjzuSe4VzMlkfF066EJMKrSo/edit';
     const ADMIN_USER = 'reneepriego';
+    const APP_VERSION = 'filter-order-v1';
     const CORRECT_ORDER = [
       'Extract filters',
       'Data source filters',
@@ -134,12 +136,11 @@
 
     let currentOrder = [];
     let playerName = '';
-    let winners = [];
-    let playedNames = new Set();
     let startTime = 0;
     let timerInterval = null;
     let finishedTime = null;
     let gameCompleted = false;
+    let hasSubmittedWin = false;
 
     function shuffle(arr) {
       return [...arr].sort(() => Math.random() - 0.5);
@@ -163,6 +164,7 @@
       document.getElementById('message').textContent = '';
       resetTimer();
       gameCompleted = false;
+      hasSubmittedWin = false;
     }
 
     function renderCards(options = {}) {
@@ -323,81 +325,45 @@
     function confirmName() {
       const nameVal = document.getElementById('playerNameInput').value.trim();
       if (!nameVal) return;
-      const normalized = nameVal.toLowerCase();
-      const isAdmin = normalized === ADMIN_USER.toLowerCase();
       playerName = nameVal;
-      if (!isAdmin && !playedNames.has(normalized)) {
-        playedNames.add(normalized);
-        savePlayedNames();
-      }
       closeNamePrompt();
       startGame();
       updateAdminVisibility();
     }
 
     function recordWinner() {
-      if (!playerName) return;
-      const normalized = playerName.toLowerCase();
-      const alreadyRecorded = winners.some(w => (w.name || '').toLowerCase() === normalized);
-      if (alreadyRecorded) return;
-      const timestamp = new Date().toISOString();
-      winners.push({ name: playerName, time: formatTimeElapsed(), timestamp });
-      saveWinners();
-      updateCsvLink();
-    }
+      if (!playerName || hasSubmittedWin) return;
+      hasSubmittedWin = true;
+      const payload = {
+        name: playerName,
+        score: getElapsedSeconds(),
+        time: formatTimeElapsed(),
+        timestamp: new Date().toISOString(),
+        version: APP_VERSION
+      };
 
-    function saveWinners() {
-      localStorage.setItem('filterWinners', JSON.stringify(winners));
-    }
-
-    function loadWinners() {
-      const data = localStorage.getItem('filterWinners');
-      if (data) {
-        try { winners = JSON.parse(data); } catch (e) { winners = []; }
-      }
-    }
-
-    function savePlayedNames() {
-      localStorage.setItem('filterPlayed', JSON.stringify(Array.from(playedNames)));
-    }
-
-    function loadPlayedNames() {
-      const data = localStorage.getItem('filterPlayed');
-      if (data) {
-        try { playedNames = new Set(JSON.parse(data)); } catch (e) { playedNames = new Set(); }
-      }
+      fetch(SUBMIT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(res => {
+        if (!res.ok) {
+          console.error('Score submission failed with status', res.status);
+        }
+      }).catch(err => {
+        hasSubmittedWin = false;
+        console.error('Error submitting score', err);
+      });
     }
 
     function updateAdminVisibility() {
-      const link = document.getElementById('csvLink');
-      const resetBtn = document.getElementById('resetWinnersBtn');
-      const isAdmin = (playerName && playerName.toLowerCase() === ADMIN_USER.toLowerCase());
-      if (link) link.style.display = isAdmin ? 'inline-block' : 'none';
-      if (resetBtn) resetBtn.style.display = isAdmin ? 'inline-block' : 'none';
-    }
-
-    function updateCsvLink() {
-      const link = document.getElementById('csvLink');
+      const link = document.getElementById('sheetLink');
       if (!link) return;
-      const header = 'Name,Time,Timestamp\n';
-      const rows = winners.map(w => `${w.name},${w.time},${w.timestamp}`).join('\n');
-      const csv = header + rows;
-      link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    }
-
-    function resetWinners() {
-      winners = [];
-      saveWinners();
-      updateCsvLink();
-      playedNames = new Set();
-      savePlayedNames();
-      alert('Winners and play history reset.');
-    }
-
-    function initStorage() {
-      loadWinners();
-      loadPlayedNames();
-      updateCsvLink();
+      const isAdmin = playerName && playerName.toLowerCase() === ADMIN_USER.toLowerCase();
+      link.style.display = isAdmin ? 'inline-block' : 'none';
+      if (isAdmin) {
+        link.href = SHEET_URL;
+      }
     }
 
     function startTimer() {
@@ -435,8 +401,6 @@
       const seconds = String(elapsed % 60).padStart(2, '0');
       return `${minutes}:${seconds}`;
     }
-
-    initStorage();
   </script>
 </body>
 </html>
