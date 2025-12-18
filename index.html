@@ -228,8 +228,8 @@
       e.preventDefault();
       const targetIndex = Number(e.currentTarget.dataset.index);
       if (dragIndex === null || targetIndex === dragIndex) return;
-      const item = currentOrder.splice(dragIndex, 1)[0];
-      currentOrder.splice(targetIndex, 0, item);
+      const item = currentOrder[dragIndex];
+      if (!reorderUnlocked(dragIndex, targetIndex)) return;
       dragIndex = null;
       cleanDropStyles();
       renderCards({ flashIndex: targetIndex });
@@ -344,16 +344,16 @@
 
       fetch(SUBMIT_URL, {
         method: 'POST',
+        mode: 'no-cors', // allow calls from local file without CORS blocking
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       }).then(res => {
-        if (!res.ok) {
-          hasSubmittedWin = false;
-          console.error('Score submission failed with status', res.status);
-          setStatusMessage('Could not save result (server error). Please try again.');
+        if (res.type === 'opaque' || res.ok) {
           return;
         }
-        setStatusMessage('Result saved to sheet.');
+        hasSubmittedWin = false;
+        console.error('Score submission failed with status', res.status);
+        setStatusMessage('Could not save result (server error). Please try again.');
       }).catch(err => {
         hasSubmittedWin = false;
         console.error('Error submitting score', err);
@@ -413,6 +413,36 @@
     function setStatusMessage(text) {
       const messageEl = document.getElementById('message');
       if (messageEl) messageEl.textContent = text;
+    }
+
+    function reorderUnlocked(fromIndex, toIndex) {
+      const lockedMask = currentOrder.map((item, idx) => item === CORRECT_ORDER[idx]);
+      if (lockedMask[fromIndex]) return false;
+      if (lockedMask[toIndex]) return false;
+
+      const unlockedIndices = lockedMask
+        .map((locked, idx) => (!locked ? idx : null))
+        .filter(idx => idx !== null);
+
+      const fromUnlockedPos = unlockedIndices.indexOf(fromIndex);
+      const toUnlockedPos = unlockedIndices.indexOf(toIndex);
+      if (fromUnlockedPos === -1 || toUnlockedPos === -1) return false;
+
+      const unlockedValues = unlockedIndices.map(i => currentOrder[i]);
+      const [moved] = unlockedValues.splice(fromUnlockedPos, 1);
+      unlockedValues.splice(toUnlockedPos, 0, moved);
+
+      const newOrder = [];
+      let unlockedPtr = 0;
+      for (let i = 0; i < currentOrder.length; i++) {
+        if (lockedMask[i]) {
+          newOrder[i] = currentOrder[i];
+        } else {
+          newOrder[i] = unlockedValues[unlockedPtr++];
+        }
+      }
+      currentOrder = newOrder;
+      return true;
     }
   </script>
 </body>
