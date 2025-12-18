@@ -104,6 +104,7 @@
       <img src="champ.png" alt="Champion badge" style="width:260px; height:auto; margin:16px auto; display:block;">
       <div class="game-controls" style="justify-content:center; margin-top:16px;">
         <button class="game-btn btn-home" onclick="goHome()">Back to Home</button>
+        <a id="sheetLinkWin" class="btn-link" href="#" target="_blank" style="display:none;">Open results sheet</a>
       </div>
     </div>
 
@@ -121,7 +122,7 @@
 
   <script>
     const SUBMIT_URL = 'https://script.google.com/macros/s/AKfycbw-H1cvOUc9Y38wVLV1qvFhirDIJx7Z0m2hN74yUskd2cZ0t9WfqIe5XGGbf7SHAlAO/exec';
-    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kT-gdl_87rzIgdOHpNeSjzuSe4VzMlkfF066EJMKrSo/edit';
+    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1d_Cx6l-HHESCqxzHry1I3479j1FY9s6iif1Qq6DQUIk/edit';
     const ADMIN_USER = 'reneepriego';
     const APP_VERSION = 'filter-order-v1';
     const CORRECT_ORDER = [
@@ -357,13 +358,16 @@
     }
 
     function updateAdminVisibility() {
-      const link = document.getElementById('sheetLink');
-      if (!link) return;
+      const adminLinks = ['sheetLink', 'sheetLinkWin']
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
       const isAdmin = playerName && playerName.toLowerCase() === ADMIN_USER.toLowerCase();
-      link.style.display = isAdmin ? 'inline-block' : 'none';
-      if (isAdmin) {
-        link.href = SHEET_URL;
-      }
+      adminLinks.forEach(link => {
+        link.style.display = isAdmin ? 'inline-block' : 'none';
+        if (isAdmin) {
+          link.href = SHEET_URL;
+        }
+      });
     }
 
     function startTimer() {
