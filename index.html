@@ -91,6 +91,7 @@
         <div class="message" id="message"></div>
         <div class="game-controls">
           <button class="btn-link" onclick="checkProgress()">Check progress</button>
+          <button class="btn-link" onclick="submitAnswers()">Submit answers</button>
           <button class="game-btn btn-home" onclick="goHome()">Back to Home</button>
           <a id="sheetLink" class="btn-link" href="#" target="_blank" style="display:none;">Open results sheet</a>
         </div>
@@ -142,6 +143,7 @@
     let finishedTime = null;
     let gameCompleted = false;
     let hasSubmittedWin = false;
+    let showCorrectIndicators = false;
 
     function shuffle(arr) {
       return [...arr].sort(() => Math.random() - 0.5);
@@ -166,6 +168,7 @@
       resetTimer();
       gameCompleted = false;
       hasSubmittedWin = false;
+      showCorrectIndicators = false;
     }
 
     function renderCards(options = {}) {
@@ -177,7 +180,7 @@
         card.className = `card color-${(idx % 7) + 1}`;
         card.textContent = text;
         const isCorrectSpot = text === CORRECT_ORDER[idx];
-        const isLocked = gameCompleted || isCorrectSpot;
+        const isLocked = gameCompleted; // only lock after full completion
         card.draggable = !isLocked;
         card.dataset.index = idx;
         card.addEventListener('dragstart', onDragStart);
@@ -186,8 +189,8 @@
         card.addEventListener('dragend', onDragEnd);
         card.addEventListener('dragenter', onDragEnter);
         card.addEventListener('dragleave', onDragLeave);
-        if (isCorrectSpot) card.classList.add('correct');
-        if (isCorrectSpot && flashIndex === idx) card.classList.add('correct-flash');
+        if (showCorrectIndicators && isCorrectSpot) card.classList.add('correct');
+        if (showCorrectIndicators && isCorrectSpot && flashIndex === idx) card.classList.add('correct-flash');
         if (isLocked) card.classList.add('locked');
         list.appendChild(card);
       });
@@ -196,6 +199,8 @@
     let dragIndex = null;
     function onDragStart(e) {
       if (gameCompleted || e.target.classList.contains('locked')) return;
+      showCorrectIndicators = false;
+      setStatusMessage('');
       dragIndex = Number(e.target.dataset.index);
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.dropEffect = 'move';
@@ -228,12 +233,12 @@
       e.preventDefault();
       const targetIndex = Number(e.currentTarget.dataset.index);
       if (dragIndex === null || targetIndex === dragIndex) return;
-      const item = currentOrder[dragIndex];
-      if (!reorderUnlocked(dragIndex, targetIndex)) return;
+      const item = currentOrder.splice(dragIndex, 1)[0];
+      currentOrder.splice(targetIndex, 0, item);
       dragIndex = null;
       cleanDropStyles();
       renderCards({ flashIndex: targetIndex });
-      checkOrder(item, targetIndex);
+      // No auto-check; user triggers via buttons.
     }
 
     function onDragEnd() {
@@ -250,9 +255,27 @@
       document.querySelectorAll('.card').forEach(c => c.classList.remove('dragging'));
     }
 
-    function checkOrder(lastMovedItem = null, targetIndex = null) {
+    function evaluateOrder() {
       const correctCount = currentOrder.reduce((count, item, i) => count + (item === CORRECT_ORDER[i] ? 1 : 0), 0);
-      const isCorrect = currentOrder.every((item, i) => item === CORRECT_ORDER[i]);
+      const isCorrect = correctCount === CORRECT_ORDER.length;
+      return { correctCount, isCorrect };
+    }
+
+    function checkProgress() {
+      showCorrectIndicators = true;
+      const { correctCount } = evaluateOrder();
+      renderCards();
+      if (correctCount === 0) {
+        setStatusMessage('No filters are in the right spot yet. Keep going!');
+      } else {
+        setStatusMessage(`${correctCount}/${CORRECT_ORDER.length} filters highlighted in green.`);
+      }
+    }
+
+    function submitAnswers() {
+      showCorrectIndicators = true;
+      const { correctCount, isCorrect } = evaluateOrder();
+      renderCards();
       if (isCorrect) {
         gameCompleted = true;
         if (finishedTime === null) finishedTime = Date.now();
@@ -263,22 +286,10 @@
         recordWinner();
         setTimeout(showWinScreen, 10000);
       } else {
-        const placedCorrectly = lastMovedItem && targetIndex !== null && currentOrder[targetIndex] === CORRECT_ORDER[targetIndex];
-        if (placedCorrectly) {
-          setStatusMessage(`"${lastMovedItem}" is in the right spot! (${correctCount}/${CORRECT_ORDER.length})`);
-        } else {
-          setStatusMessage(`Keep adjusting the order. (${correctCount}/${CORRECT_ORDER.length})`);
-        }
-      }
-    }
-
-    function checkProgress() {
-      const correctCount = currentOrder.reduce((count, item, i) => count + (item === CORRECT_ORDER[i] ? 1 : 0), 0);
-      renderCards();
-      if (correctCount === 0) {
-        setStatusMessage('No filters are in the right spot yet. Keep going!');
-      } else {
-        setStatusMessage(`${correctCount}/${CORRECT_ORDER.length} filters are currently in the correct position.`);
+        gameCompleted = true;
+        stopTimer();
+        lockCards();
+        setStatusMessage(`Submitted with ${correctCount}/${CORRECT_ORDER.length} correct. Game over.`);
       }
     }
 
@@ -413,36 +424,6 @@
     function setStatusMessage(text) {
       const messageEl = document.getElementById('message');
       if (messageEl) messageEl.textContent = text;
-    }
-
-    function reorderUnlocked(fromIndex, toIndex) {
-      const lockedMask = currentOrder.map((item, idx) => item === CORRECT_ORDER[idx]);
-      if (lockedMask[fromIndex]) return false;
-      if (lockedMask[toIndex]) return false;
-
-      const unlockedIndices = lockedMask
-        .map((locked, idx) => (!locked ? idx : null))
-        .filter(idx => idx !== null);
-
-      const fromUnlockedPos = unlockedIndices.indexOf(fromIndex);
-      const toUnlockedPos = unlockedIndices.indexOf(toIndex);
-      if (fromUnlockedPos === -1 || toUnlockedPos === -1) return false;
-
-      const unlockedValues = unlockedIndices.map(i => currentOrder[i]);
-      const [moved] = unlockedValues.splice(fromUnlockedPos, 1);
-      unlockedValues.splice(toUnlockedPos, 0, moved);
-
-      const newOrder = [];
-      let unlockedPtr = 0;
-      for (let i = 0; i < currentOrder.length; i++) {
-        if (lockedMask[i]) {
-          newOrder[i] = currentOrder[i];
-        } else {
-          newOrder[i] = unlockedValues[unlockedPtr++];
-        }
-      }
-      currentOrder = newOrder;
-      return true;
     }
   </script>
 </body>
