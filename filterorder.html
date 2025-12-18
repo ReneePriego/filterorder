@@ -90,9 +90,9 @@
         <div class="cards" id="cardList"></div>
         <div class="message" id="message"></div>
         <div class="game-controls">
-          <button class="btn-link" onclick="checkProgress()">Check progress</button>
-          <button class="btn-link" onclick="submitAnswers()">Submit answers</button>
-          <button class="game-btn btn-home" onclick="goHome()">Back to Home</button>
+          <button id="checkProgressBtn" class="btn-link" onclick="checkProgress()">Check progress</button>
+          <button id="submitAnswersBtn" class="btn-link" onclick="submitAnswers()">Submit answers</button>
+          <button id="homeBtn" class="game-btn btn-home" onclick="goHome()">Back to Home</button>
           <a id="sheetLink" class="btn-link" href="#" target="_blank" style="display:none;">Open results sheet</a>
         </div>
       </div>
@@ -104,7 +104,7 @@
       <p id="winDetails" style="margin-bottom:12px; color:#004B87;"></p>
       <img src="champ.png" alt="Champion badge" style="width:260px; height:auto; margin:16px auto; display:block;">
       <div class="game-controls" style="justify-content:center; margin-top:16px;">
-        <button class="game-btn btn-home" onclick="goHome()">Back to Home</button>
+        <button id="homeBtnWin" class="game-btn btn-home" onclick="goHome()">Back to Home</button>
         <a id="sheetLinkWin" class="btn-link" href="#" target="_blank" style="display:none;">Open results sheet</a>
       </div>
     </div>
@@ -345,10 +345,13 @@
     function recordWinner() {
       if (!playerName || hasSubmittedWin) return;
       hasSubmittedWin = true;
+      const elapsedSeconds = getElapsedSeconds();
+      const elapsedFormatted = formatTimeElapsed();
       const payload = {
         name: playerName,
-        score: getElapsedSeconds(),
-        time: formatTimeElapsed(),
+        score: elapsedFormatted, // store as mm:ss for readability
+        time: elapsedFormatted,
+        timeSeconds: elapsedSeconds,
         timestamp: new Date().toISOString(),
         version: APP_VERSION
       };
@@ -376,12 +379,18 @@
       const adminLinks = ['sheetLink', 'sheetLinkWin']
         .map(id => document.getElementById(id))
         .filter(Boolean);
+      const nonAdminButtons = ['checkProgressBtn', 'submitAnswersBtn', 'homeBtn', 'homeBtnWin']
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
       const isAdmin = playerName && playerName.toLowerCase() === ADMIN_USER.toLowerCase();
       adminLinks.forEach(link => {
         link.style.display = isAdmin ? 'inline-block' : 'none';
         if (isAdmin) {
           link.href = SHEET_URL;
         }
+      });
+      nonAdminButtons.forEach(btn => {
+        btn.style.display = isAdmin ? 'none' : '';
       });
     }
 
