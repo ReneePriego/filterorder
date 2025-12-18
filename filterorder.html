@@ -121,7 +121,7 @@
   </div>
 
   <script>
-    const SUBMIT_URL = 'https://script.google.com/macros/s/AKfycbw-H1cvOUc9Y38wVLV1qvFhirDIJx7Z0m2hN74yUskd2cZ0t9WfqIe5XGGbf7SHAlAO/exec';
+    const SUBMIT_URL = 'https://script.google.com/macros/s/AKfycbyNoSx3IRXUAupgKkwXBlltcPSP-NTd0NvAdCauPyasoJcQPdW7ThkPrIGqBqwxyDbM/exec';
     const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1d_Cx6l-HHESCqxzHry1I3479j1FY9s6iif1Qq6DQUIk/edit';
     const ADMIN_USER = 'reneepriego';
     const APP_VERSION = 'filter-order-v1';
@@ -162,7 +162,7 @@
     function buildCards() {
       currentOrder = shuffleOrderAvoidingCorrect();
       renderCards();
-      document.getElementById('message').textContent = '';
+      setStatusMessage('');
       resetTimer();
       gameCompleted = false;
       hasSubmittedWin = false;
@@ -258,15 +258,16 @@
         if (finishedTime === null) finishedTime = Date.now();
         updateTimer();
         stopTimer();
-        document.getElementById('message').textContent = '✓ Correct order! Reviewing...';
+        setStatusMessage('✓ Correct order! Saving result...');
         lockCards();
+        recordWinner();
         setTimeout(showWinScreen, 10000);
       } else {
         const placedCorrectly = lastMovedItem && targetIndex !== null && currentOrder[targetIndex] === CORRECT_ORDER[targetIndex];
         if (placedCorrectly) {
-          document.getElementById('message').textContent = `"${lastMovedItem}" is in the right spot! (${correctCount}/${CORRECT_ORDER.length})`;
+          setStatusMessage(`"${lastMovedItem}" is in the right spot! (${correctCount}/${CORRECT_ORDER.length})`);
         } else {
-          document.getElementById('message').textContent = `Keep adjusting the order. (${correctCount}/${CORRECT_ORDER.length})`;
+          setStatusMessage(`Keep adjusting the order. (${correctCount}/${CORRECT_ORDER.length})`);
         }
       }
     }
@@ -274,11 +275,10 @@
     function checkProgress() {
       const correctCount = currentOrder.reduce((count, item, i) => count + (item === CORRECT_ORDER[i] ? 1 : 0), 0);
       renderCards();
-      const messageEl = document.getElementById('message');
       if (correctCount === 0) {
-        messageEl.textContent = 'No filters are in the right spot yet. Keep going!';
+        setStatusMessage('No filters are in the right spot yet. Keep going!');
       } else {
-        messageEl.textContent = `${correctCount}/${CORRECT_ORDER.length} filters are currently in the correct position.`;
+        setStatusMessage(`${correctCount}/${CORRECT_ORDER.length} filters are currently in the correct position.`);
       }
     }
 
@@ -294,7 +294,6 @@
       stopTimer();
       document.getElementById('winDetails').textContent = `Completed in ${formatTimeElapsed()}.`;
       document.getElementById('winScreen').style.display = 'block';
-      recordWinner();
     }
 
     function startGame() {
@@ -349,11 +348,16 @@
         body: JSON.stringify(payload)
       }).then(res => {
         if (!res.ok) {
+          hasSubmittedWin = false;
           console.error('Score submission failed with status', res.status);
+          setStatusMessage('Could not save result (server error). Please try again.');
+          return;
         }
+        setStatusMessage('Result saved to sheet.');
       }).catch(err => {
         hasSubmittedWin = false;
         console.error('Error submitting score', err);
+        setStatusMessage('Could not save result (network error).');
       });
     }
 
@@ -404,6 +408,11 @@
       const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
       const seconds = String(elapsed % 60).padStart(2, '0');
       return `${minutes}:${seconds}`;
+    }
+
+    function setStatusMessage(text) {
+      const messageEl = document.getElementById('message');
+      if (messageEl) messageEl.textContent = text;
     }
   </script>
 </body>
