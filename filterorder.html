@@ -275,21 +275,19 @@
     function submitAnswers() {
       showCorrectIndicators = true;
       const { correctCount, isCorrect } = evaluateOrder();
+      const correctPercent = Math.round((correctCount / CORRECT_ORDER.length) * 100);
       renderCards();
+      gameCompleted = true;
+      if (finishedTime === null) finishedTime = Date.now();
+      updateTimer();
+      stopTimer();
+      lockCards();
+      recordWinner({ correctCount, correctPercent, isCorrect });
       if (isCorrect) {
-        gameCompleted = true;
-        if (finishedTime === null) finishedTime = Date.now();
-        updateTimer();
-        stopTimer();
         setStatusMessage('✓ Correct order! Saving result...');
-        lockCards();
-        recordWinner();
         setTimeout(showWinScreen, 10000);
       } else {
-        gameCompleted = true;
-        stopTimer();
-        lockCards();
-        setStatusMessage(`Submitted with ${correctCount}/${CORRECT_ORDER.length} correct. Game over.`);
+        setStatusMessage(`Submitted with ${correctCount}/${CORRECT_ORDER.length} correct (${correctPercent}%). Game over.`);
       }
     }
 
@@ -342,14 +340,22 @@
       updateAdminVisibility();
     }
 
-    function recordWinner() {
+    function recordWinner(stats = {}) {
       if (!playerName || hasSubmittedWin) return;
       hasSubmittedWin = true;
+      const {
+        correctCount = CORRECT_ORDER.length,
+        correctPercent = 100,
+        isCorrect = true
+      } = stats;
       const elapsedSeconds = getElapsedSeconds();
       const elapsedFormatted = formatTimeElapsed();
       const payload = {
         name: playerName,
-        score: elapsedFormatted, // store as mm:ss for readability
+        score: correctPercent,
+        correctCount,
+        total: CORRECT_ORDER.length,
+        isCorrect,
         time: elapsedFormatted,
         timeSeconds: elapsedSeconds,
         timestamp: new Date().toISOString(),
